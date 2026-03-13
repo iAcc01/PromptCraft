@@ -1,0 +1,71 @@
+{
+  // electron-builder configuration
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.promptcraft.app",
+  "productName": "PromptCraft",
+  "copyright": "Copyright © 2026 PromptCraft Team",
+
+  // Build directories
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+
+  // Files to include
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*"
+  ],
+
+  // Auto-update publish configuration (GitHub Releases)
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "promptcraft",
+      "repo": "promptcraft-app",
+      "releaseType": "release"
+    }
+  ],
+
+  // macOS specific configuration
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["universal"]
+      },
+      {
+        "target": "zip",
+        "arch": ["universal"]
+      }
+    ],
+    "category": "public.app-category.developer-tools",
+    "icon": "build/icon.icns",
+    "artifactName": "${productName}-${version}-macOS.${ext}",
+    "darkModeSupport": true,
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false
+  },
+
+  // DMG configuration
+  "dmg": {
+    "title": "${productName}",
+    "artifactName": "${productName}-${version}-macOS.${ext}",
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ],
+    "window": {
+      "width": 540,
+      "height": 380
+    }
+  }
+}
