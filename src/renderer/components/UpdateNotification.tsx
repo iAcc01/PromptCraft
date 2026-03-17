@@ -93,6 +93,10 @@ const UpdateNotification: React.FC = () => {
     ipcRenderer.invoke('install-update')
   }
 
+  const handleStartDownload = () => {
+    ipcRenderer.invoke('start-download')
+  }
+
   const handleCheckUpdate = () => {
     ipcRenderer.invoke('check-for-updates')
   }
@@ -152,7 +156,7 @@ const UpdateNotification: React.FC = () => {
         </div>
       )}
 
-      {/* Update available (still downloading) */}
+      {/* Update available — ask user to confirm download */}
       {status === 'available' && (
         <div className="update-banner update-banner-available">
           <div className="update-banner-content">
@@ -168,16 +172,18 @@ const UpdateNotification: React.FC = () => {
                 发现新版本 v{updateInfo?.version}
               </span>
               <span className="update-banner-detail">
-                正在后台自动下载...
+                有新版本可供更新，是否立即下载？
               </span>
             </div>
           </div>
-          <button className="update-dismiss-btn" onClick={handleDismiss}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          <div className="update-banner-actions">
+            <button className="update-later-btn" onClick={handleDismiss}>
+              稍后
+            </button>
+            <button className="update-install-btn" onClick={handleStartDownload}>
+              立即更新
+            </button>
+          </div>
         </div>
       )}
 

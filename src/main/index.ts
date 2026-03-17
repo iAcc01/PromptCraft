@@ -9,7 +9,7 @@ log.transports.file.level = 'info'
 autoUpdater.logger = log
 
 // ─── Auto-Update Configuration ──────────────────────────────────
-autoUpdater.autoDownload = true
+autoUpdater.autoDownload = false          // Don't auto-download; wait for user confirmation
 autoUpdater.autoInstallOnAppQuit = true
 autoUpdater.allowPrerelease = false
 
@@ -173,6 +173,16 @@ app.whenReady().then(() => {
 
   ipcMain.handle('install-update', () => {
     autoUpdater.quitAndInstall(false, true)
+  })
+
+  ipcMain.handle('start-download', async () => {
+    try {
+      await autoUpdater.downloadUpdate()
+      return { success: true }
+    } catch (error: any) {
+      log.error('Download update failed:', error)
+      return { success: false, error: error?.message || '下载更新失败' }
+    }
   })
 
   ipcMain.handle('get-app-version', () => {
