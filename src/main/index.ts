@@ -174,14 +174,17 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('install-update', () => {
+    log.info('User requested install-update, quitting and installing...')
     isQuittingForUpdate = true
-    // On macOS, close all windows first to avoid blocking the quit process
-    const windows = BrowserWindow.getAllWindows()
-    windows.forEach((w) => w.close())
-    // Give the windows time to close, then trigger install
+    // Force-close to prevent macOS from keeping the app alive
+    // quitAndInstall with isSilent=true avoids showing the installer window
+    // and forceRunAfter=true ensures the app restarts after install
+    autoUpdater.quitAndInstall(true, true)
+    // If quitAndInstall didn't exit (macOS bug), force it
     setTimeout(() => {
-      autoUpdater.quitAndInstall(false, true)
-    }, 300)
+      log.warn('quitAndInstall did not exit, forcing app.exit(0)')
+      app.exit(0)
+    }, 1000)
   })
 
   ipcMain.handle('start-download', async () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 // Access electron ipcRenderer via nodeIntegration
 const { ipcRenderer } = window.require('electron')
@@ -32,6 +32,13 @@ const UpdateNotification: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [dismissed, setDismissed] = useState(false)
   const [appVersion, setAppVersion] = useState('')
+  const statusRef = useRef<UpdateStatus>('idle')
+
+  // Keep ref in sync so event handlers always see the latest status
+  const updateStatus = (newStatus: UpdateStatus) => {
+    statusRef.current = newStatus
+    setStatus(newStatus)
+  }
 
   useEffect(() => {
     // Get current app version
@@ -39,51 +46,51 @@ const UpdateNotification: React.FC = () => {
 
     // Listen for update events from main process
     const onChecking = () => {
-      // Only show 'checking' if we're not already in a meaningful state
-      // Prevents periodic check from dismissing an active update prompt
-      setStatus((prev) => {
-        if (prev === 'available' || prev === 'downloading' || prev === 'downloaded') {
-          return prev
-        }
-        return 'checking'
-      })
+      const cur = statusRef.current
+      // Don't dismiss an active update prompt
+      if (cur !== 'available' && cur !== 'downloading' && cur !== 'downloaded') {
+        updateStatus('checking')
+      }
       setError(null)
     }
 
     const onAvailable = (_e: any, info: UpdateInfo) => {
-      setStatus('available')
       setUpdateInfo(info)
-      setDismissed(false)
+      const cur = statusRef.current
+      // Don't regress from downloading/downloaded back to available
+      if (cur !== 'downloading' && cur !== 'downloaded') {
+        updateStatus('available')
+        setDismissed(false)
+      }
     }
 
     const onNotAvailable = (_e: any, info: { version: string }) => {
-      // Don't override if we already have a download ready
-      setStatus((prev) => {
-        if (prev === 'downloaded') return prev
-        return 'not-available'
-      })
       setUpdateInfo({ version: info.version })
+      const cur = statusRef.current
+      if (cur !== 'downloaded' && cur !== 'downloading' && cur !== 'available') {
+        updateStatus('not-available')
+      }
     }
 
     const onProgress = (_e: any, prog: DownloadProgress) => {
-      setStatus('downloading')
+      updateStatus('downloading')
       setProgress(prog)
       setDismissed(false)
     }
 
     const onDownloaded = (_e: any, info: UpdateInfo) => {
-      setStatus('downloaded')
+      updateStatus('downloaded')
       setUpdateInfo(info)
       setProgress(null)
       setDismissed(false)
     }
 
     const onError = (_e: any, data: { message: string }) => {
-      // Don't override 'downloaded' state with error from periodic re-check
-      setStatus((prev) => {
-        if (prev === 'downloaded') return prev
-        return 'error'
-      })
+      const cur = statusRef.current
+      // Don't override meaningful states with error from periodic re-check
+      if (cur !== 'downloaded' && cur !== 'downloading') {
+        updateStatus('error')
+      }
       setError(data?.message || '更新检查失败')
     }
 
