@@ -39,7 +39,14 @@ const UpdateNotification: React.FC = () => {
 
     // Listen for update events from main process
     const onChecking = () => {
-      setStatus('checking')
+      // Only show 'checking' if we're not already in a meaningful state
+      // Prevents periodic check from dismissing an active update prompt
+      setStatus((prev) => {
+        if (prev === 'available' || prev === 'downloading' || prev === 'downloaded') {
+          return prev
+        }
+        return 'checking'
+      })
       setError(null)
     }
 
@@ -50,7 +57,11 @@ const UpdateNotification: React.FC = () => {
     }
 
     const onNotAvailable = (_e: any, info: { version: string }) => {
-      setStatus('not-available')
+      // Don't override if we already have a download ready
+      setStatus((prev) => {
+        if (prev === 'downloaded') return prev
+        return 'not-available'
+      })
       setUpdateInfo({ version: info.version })
     }
 
@@ -68,7 +79,11 @@ const UpdateNotification: React.FC = () => {
     }
 
     const onError = (_e: any, data: { message: string }) => {
-      setStatus('error')
+      // Don't override 'downloaded' state with error from periodic re-check
+      setStatus((prev) => {
+        if (prev === 'downloaded') return prev
+        return 'error'
+      })
       setError(data?.message || '更新检查失败')
     }
 
@@ -111,12 +126,12 @@ const UpdateNotification: React.FC = () => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  // Don't show anything if idle, not-available, or dismissed (except downloaded)
+  // Don't show anything if idle, not-available, checking, or user dismissed
   if (status === 'idle' || status === 'not-available' || status === 'checking') {
     return null
   }
 
-  if (dismissed && status !== 'downloaded') {
+  if (dismissed) {
     return null
   }
 

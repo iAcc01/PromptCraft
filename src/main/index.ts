@@ -17,6 +17,8 @@ autoUpdater.allowPrerelease = false
 const DATA_DIR = join(app.getPath('userData'), 'promptcraft-data')
 const PROMPTS_FILE = join(DATA_DIR, 'prompts.json')
 
+let isQuittingForUpdate = false
+
 let mainWindow: BrowserWindow | null = null
 
 function ensureDataDir() {
@@ -172,7 +174,14 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('install-update', () => {
-    autoUpdater.quitAndInstall(false, true)
+    isQuittingForUpdate = true
+    // On macOS, close all windows first to avoid blocking the quit process
+    const windows = BrowserWindow.getAllWindows()
+    windows.forEach((w) => w.close())
+    // Give the windows time to close, then trigger install
+    setTimeout(() => {
+      autoUpdater.quitAndInstall(false, true)
+    }, 300)
   })
 
   ipcMain.handle('start-download', async () => {
@@ -215,5 +224,5 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (process.platform !== 'darwin' || isQuittingForUpdate) app.quit()
 })
