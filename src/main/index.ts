@@ -176,15 +176,21 @@ app.whenReady().then(() => {
   ipcMain.handle('install-update', () => {
     log.info('User requested install-update, quitting and installing...')
     isQuittingForUpdate = true
-    // Force-close to prevent macOS from keeping the app alive
-    // quitAndInstall with isSilent=true avoids showing the installer window
-    // and forceRunAfter=true ensures the app restarts after install
+
+    // On macOS, quitAndInstall may not relaunch the app reliably.
+    // Register a relaunch first so the OS restarts us after exit.
+    app.relaunch()
+
+    // Now quit and install the update.
+    // autoInstallOnAppQuit=true ensures the update is applied on exit.
     autoUpdater.quitAndInstall(true, true)
-    // If quitAndInstall didn't exit (macOS bug), force it
+
+    // If quitAndInstall didn't actually exit (known macOS issue), force it.
+    // app.relaunch() was already registered, so app.exit() will trigger restart.
     setTimeout(() => {
       log.warn('quitAndInstall did not exit, forcing app.exit(0)')
       app.exit(0)
-    }, 1000)
+    }, 1500)
   })
 
   ipcMain.handle('start-download', async () => {
