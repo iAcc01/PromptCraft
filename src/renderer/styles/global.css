@@ -278,12 +278,11 @@ html, body, #root {
   font-weight: 500;
 }
 
-.sidebar-footer {
-  padding: 12px;
-  border-top: 1px solid var(--border-primary);
+.sidebar-actions {
+  padding: 8px 12px 0;
 }
 
-.sidebar-footer-btn {
+.sidebar-new-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -302,13 +301,13 @@ html, body, #root {
   -webkit-app-region: no-drag;
 }
 
-.sidebar-footer-btn:hover {
+.sidebar-new-btn:hover {
   background: var(--accent-hover);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
-.sidebar-footer-btn svg {
+.sidebar-new-btn svg {
   width: 16px;
   height: 16px;
 }

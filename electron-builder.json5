@@ -21,8 +21,8 @@
   "publish": [
     {
       "provider": "github",
-      "owner": "promptcraft",
-      "repo": "promptcraft-app",
+      "owner": "iAcc01",
+      "repo": "PromptCraft",
       "releaseType": "release"
     }
   ],
