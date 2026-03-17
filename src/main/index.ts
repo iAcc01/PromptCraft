@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
-import { join } from 'path'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { join, dirname } from 'path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { autoUpdater, UpdateInfo } from 'electron-updater'
+import { execFile } from 'child_process'
 import * as log from 'electron-log'
 
 // ─── Logging Setup ───────────────────────────────────────────────
@@ -10,7 +11,7 @@ autoUpdater.logger = log
 
 // ─── Auto-Update Configuration ──────────────────────────────────
 autoUpdater.autoDownload = false          // Don't auto-download; wait for user confirmation
-autoUpdater.autoInstallOnAppQuit = true
+autoUpdater.autoInstallOnAppQuit = false  // We handle install ourselves (Squirrel fails on unsigned apps)
 autoUpdater.allowPrerelease = false
 
 // ─── Data Paths ─────────────────────────────────────────────────
@@ -18,6 +19,7 @@ const DATA_DIR = join(app.getPath('userData'), 'promptcraft-data')
 const PROMPTS_FILE = join(DATA_DIR, 'prompts.json')
 
 let isQuittingForUpdate = false
+let updateCheckInterval: ReturnType<typeof setInterval> | null = null
 
 let mainWindow: BrowserWindow | null = null
 
@@ -104,6 +106,12 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
     log.info('Update downloaded:', info.version)
+    // Stop periodic checks to avoid interfering with Squirrel's install process
+    if (updateCheckInterval) {
+      clearInterval(updateCheckInterval)
+      updateCheckInterval = null
+      log.info('Stopped periodic update checks after download completed')
+    }
     sendUpdateStatus('update-downloaded', {
       version: info.version,
       releaseDate: info.releaseDate,
@@ -173,24 +181,106 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('install-update', () => {
-    log.info('User requested install-update, quitting and installing...')
+  ipcMain.handle('install-update', async () => {
+    log.info('User requested install-update')
     isQuittingForUpdate = true
 
-    // On macOS, quitAndInstall may not relaunch the app reliably.
-    // Register a relaunch first so the OS restarts us after exit.
-    app.relaunch()
+    // Stop periodic update checks
+    if (updateCheckInterval) {
+      clearInterval(updateCheckInterval)
+      updateCheckInterval = null
+    }
 
-    // Now quit and install the update.
-    // autoInstallOnAppQuit=true ensures the update is applied on exit.
-    autoUpdater.quitAndInstall(true, true)
+    try {
+      // 1. Find the downloaded zip in electron-updater's cache
+      //    electron-updater stores downloads in ~/Library/Caches/<updaterCacheDirName>/pending/
+      const updaterCacheDir = join(app.getPath('home'), 'Library', 'Caches', 'promptcraft-updater', 'pending')
+      log.info(`Looking for update zip in: ${updaterCacheDir}`)
 
-    // If quitAndInstall didn't actually exit (known macOS issue), force it.
-    // app.relaunch() was already registered, so app.exit() will trigger restart.
-    setTimeout(() => {
-      log.warn('quitAndInstall did not exit, forcing app.exit(0)')
+      if (!existsSync(updaterCacheDir)) {
+        log.error('Updater cache directory not found')
+        return { success: false, error: '未找到已下载的更新文件' }
+      }
+
+      const files = readdirSync(updaterCacheDir)
+      const zipFile = files.find(f => f.endsWith('.zip'))
+      if (!zipFile) {
+        log.error('No zip file found in updater cache')
+        return { success: false, error: '未找到更新包' }
+      }
+
+      const zipPath = join(updaterCacheDir, zipFile)
+      log.info(`Found update zip: ${zipPath}`)
+
+      // 2. Determine the current app bundle path
+      //    app.getAppPath() returns something like /Applications/PromptCraft.app/Contents/Resources/app.asar
+      //    We need the .app directory
+      const appPath = app.getAppPath()
+      let appBundlePath = appPath
+      const contentsIndex = appPath.indexOf('.app/Contents')
+      if (contentsIndex !== -1) {
+        appBundlePath = appPath.substring(0, contentsIndex + 4) // include '.app'
+      } else {
+        // Fallback: try to find the .app parent
+        let current = appPath
+        while (current !== '/' && !current.endsWith('.app')) {
+          current = dirname(current)
+        }
+        if (current.endsWith('.app')) {
+          appBundlePath = current
+        }
+      }
+      log.info(`Current app bundle: ${appBundlePath}`)
+
+      const appBundleParent = dirname(appBundlePath)
+
+      // 3. Create a shell script that will:
+      //    - Wait for the current process to exit
+      //    - Remove the old app bundle
+      //    - Unzip the new app to the same location
+      //    - Launch the new app
+      //    - Clean up itself
+      const scriptPath = join(app.getPath('temp'), 'promptcraft-update.sh')
+      const script = `#!/bin/bash
+# Wait for the old app process to exit
+sleep 1
+
+# Remove old app bundle
+rm -rf "${appBundlePath}"
+
+# Unzip new app to the parent directory
+/usr/bin/ditto -xk "${zipPath}" "${appBundleParent}"
+
+# Remove quarantine attribute (unsigned app)
+xattr -rd com.apple.quarantine "${appBundlePath}" 2>/dev/null
+
+# Launch the new app
+open "${appBundlePath}"
+
+# Clean up
+rm -f "${scriptPath}"
+`
+
+      writeFileSync(scriptPath, script, { mode: 0o755 })
+      log.info(`Created update script at: ${scriptPath}`)
+
+      // 4. Execute the script in background (detached)
+      const child = execFile('/bin/bash', [scriptPath], {
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.unref()
+      log.info('Update script launched, exiting app...')
+
+      // 5. Quit the app
       app.exit(0)
-    }, 1500)
+
+      return { success: true }
+    } catch (error: any) {
+      log.error('Install update failed:', error)
+      isQuittingForUpdate = false
+      return { success: false, error: error?.message || '安装更新失败' }
+    }
   })
 
   ipcMain.handle('start-download', async () => {
@@ -220,7 +310,7 @@ app.whenReady().then(() => {
     }, 3000)
 
     // Periodic update check every 30 minutes
-    setInterval(() => {
+    updateCheckInterval = setInterval(() => {
       autoUpdater.checkForUpdates().catch((err) => {
         log.error('Periodic update check failed:', err)
       })
