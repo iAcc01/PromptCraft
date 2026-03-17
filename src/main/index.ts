@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { join, dirname } from 'path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { autoUpdater, UpdateInfo } from 'electron-updater'
-import { execFile } from 'child_process'
+import { spawn } from 'child_process'
 import * as log from 'electron-log'
 
 // ─── Logging Setup ───────────────────────────────────────────────
@@ -182,7 +182,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('install-update', async () => {
-    log.info('User requested install-update')
+    log.info('[install-update] User requested install-update')
     isQuittingForUpdate = true
 
     // Stop periodic update checks
@@ -193,35 +193,36 @@ app.whenReady().then(() => {
 
     try {
       // 1. Find the downloaded zip in electron-updater's cache
-      //    electron-updater stores downloads in ~/Library/Caches/<updaterCacheDirName>/pending/
       const updaterCacheDir = join(app.getPath('home'), 'Library', 'Caches', 'promptcraft-updater', 'pending')
-      log.info(`Looking for update zip in: ${updaterCacheDir}`)
+      log.info(`[install-update] Looking for update zip in: ${updaterCacheDir}`)
 
       if (!existsSync(updaterCacheDir)) {
-        log.error('Updater cache directory not found')
+        log.error('[install-update] Updater cache directory not found')
+        isQuittingForUpdate = false
         return { success: false, error: '未找到已下载的更新文件' }
       }
 
       const files = readdirSync(updaterCacheDir)
+      log.info(`[install-update] Files in cache: ${files.join(', ')}`)
       const zipFile = files.find(f => f.endsWith('.zip'))
       if (!zipFile) {
-        log.error('No zip file found in updater cache')
+        log.error('[install-update] No zip file found in updater cache')
+        isQuittingForUpdate = false
         return { success: false, error: '未找到更新包' }
       }
 
       const zipPath = join(updaterCacheDir, zipFile)
-      log.info(`Found update zip: ${zipPath}`)
+      log.info(`[install-update] Found update zip: ${zipPath}`)
 
       // 2. Determine the current app bundle path
-      //    app.getAppPath() returns something like /Applications/PromptCraft.app/Contents/Resources/app.asar
-      //    We need the .app directory
       const appPath = app.getAppPath()
+      log.info(`[install-update] app.getAppPath() = ${appPath}`)
+
       let appBundlePath = appPath
       const contentsIndex = appPath.indexOf('.app/Contents')
       if (contentsIndex !== -1) {
-        appBundlePath = appPath.substring(0, contentsIndex + 4) // include '.app'
+        appBundlePath = appPath.substring(0, contentsIndex + 4)
       } else {
-        // Fallback: try to find the .app parent
         let current = appPath
         while (current !== '/' && !current.endsWith('.app')) {
           current = dirname(current)
@@ -230,54 +231,89 @@ app.whenReady().then(() => {
           appBundlePath = current
         }
       }
-      log.info(`Current app bundle: ${appBundlePath}`)
+      log.info(`[install-update] App bundle path: ${appBundlePath}`)
 
       const appBundleParent = dirname(appBundlePath)
+      log.info(`[install-update] App bundle parent: ${appBundleParent}`)
 
-      // 3. Create a shell script that will:
-      //    - Wait for the current process to exit
-      //    - Remove the old app bundle
-      //    - Unzip the new app to the same location
-      //    - Launch the new app
-      //    - Clean up itself
+      const pid = process.pid
+      log.info(`[install-update] Current PID: ${pid}`)
+
+      // 3. Create a shell script that:
+      //    - Waits for this process to fully exit (by PID)
+      //    - Removes the old app bundle
+      //    - Extracts the new app from the zip
+      //    - Removes quarantine xattr
+      //    - Launches the new app
+      //    - Logs everything for debugging
       const scriptPath = join(app.getPath('temp'), 'promptcraft-update.sh')
+      const logPath = join(app.getPath('temp'), 'promptcraft-update.log')
       const script = `#!/bin/bash
-# Wait for the old app process to exit
-sleep 1
+exec > "${logPath}" 2>&1
+echo "=== PromptCraft Update Script ==="
+echo "Started at: $(date)"
+echo "Waiting for PID ${pid} to exit..."
 
-# Remove old app bundle
+# Wait for the Electron process to fully exit (up to 10 seconds)
+for i in $(seq 1 20); do
+  if ! kill -0 ${pid} 2>/dev/null; then
+    echo "PID ${pid} has exited after $((i * 500))ms"
+    break
+  fi
+  sleep 0.5
+done
+
+# Double check
+if kill -0 ${pid} 2>/dev/null; then
+  echo "WARNING: PID ${pid} still alive after 10s, proceeding anyway"
+fi
+
+echo "Removing old app bundle: ${appBundlePath}"
 rm -rf "${appBundlePath}"
+echo "rm result: $?"
 
-# Unzip new app to the parent directory
+echo "Extracting zip: ${zipPath} -> ${appBundleParent}"
 /usr/bin/ditto -xk "${zipPath}" "${appBundleParent}"
+echo "ditto result: $?"
 
-# Remove quarantine attribute (unsigned app)
+echo "Removing quarantine attribute"
 xattr -rd com.apple.quarantine "${appBundlePath}" 2>/dev/null
 
-# Launch the new app
-open "${appBundlePath}"
+echo "Verifying new app exists:"
+ls -la "${appBundlePath}/Contents/Info.plist" 2>/dev/null
+NEW_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "${appBundlePath}/Contents/Info.plist" 2>/dev/null)
+echo "New version: $NEW_VERSION"
 
-# Clean up
+echo "Launching new app: ${appBundlePath}"
+open "${appBundlePath}"
+echo "open result: $?"
+
+echo "Cleaning up script"
 rm -f "${scriptPath}"
+echo "=== Update complete at: $(date) ==="
 `
 
       writeFileSync(scriptPath, script, { mode: 0o755 })
-      log.info(`Created update script at: ${scriptPath}`)
+      log.info(`[install-update] Created update script at: ${scriptPath}`)
+      log.info(`[install-update] Update log will be at: ${logPath}`)
 
-      // 4. Execute the script in background (detached)
-      const child = execFile('/bin/bash', [scriptPath], {
+      // 4. Spawn the script as a fully detached process
+      const child = spawn('/bin/bash', [scriptPath], {
         detached: true,
-        stdio: 'ignore'
+        stdio: 'ignore',
+        env: { ...process.env }
       })
       child.unref()
-      log.info('Update script launched, exiting app...')
+      log.info(`[install-update] Script spawned with PID: ${child.pid}, exiting app now...`)
 
-      // 5. Quit the app
-      app.exit(0)
+      // 5. Exit the app — the script will wait for us to die, then replace + relaunch
+      setTimeout(() => {
+        app.exit(0)
+      }, 200)
 
       return { success: true }
     } catch (error: any) {
-      log.error('Install update failed:', error)
+      log.error('[install-update] Install update failed:', error)
       isQuittingForUpdate = false
       return { success: false, error: error?.message || '安装更新失败' }
     }
