@@ -74,19 +74,7 @@ const App: React.FC = () => {
       case 'settings':
         return <Settings showToast={showToast} />
       case 'explore':
-        return (
-          <div className="content-area">
-            <div className="empty-state" style={{ marginTop: 80 }}>
-              <div className="empty-state-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-              </div>
-              <div className="empty-state-title">探索 · 即将上线</div>
-              <div className="empty-state-desc">社区模板市场正在开发中，敬请期待</div>
-            </div>
-          </div>
-        )
+        return <Library showToast={showToast} />
       case 'library':
       default:
         return <Library showToast={showToast} />

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useAppStore } from '../stores/useAppStore'
-import { Prompt } from '../types'
+import { Prompt, DEFAULT_CATEGORIES, CATEGORY_ICONS } from '../types'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 
@@ -12,8 +12,14 @@ const Library: React.FC<LibraryProps> = ({ showToast }) => {
   const {
     viewMode,
     selectedPromptId,
+    selectedCategory,
+    sortBy,
+    searchQuery,
     selectPrompt,
     setActiveView,
+    setSelectedCategory,
+    setSortBy,
+    setSearchQuery,
     toggleFavorite,
     deletePrompt,
     duplicatePrompt,
@@ -86,28 +92,88 @@ const Library: React.FC<LibraryProps> = ({ showToast }) => {
     }
   }
 
-  if (filteredPrompts.length === 0) {
-    return (
-      <div className="content-area">
-        <div className="stats-row">
-          <div className="stat-card">
-            <div className="stat-number">{prompts.length}</div>
-            <div className="stat-label">总数</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-number">{prompts.filter(p => p.isFavorite).length}</div>
-            <div className="stat-label">收藏</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-number">{new Set(prompts.map(p => p.category)).size}</div>
-            <div className="stat-label">分类</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-number">{prompts.reduce((sum, p) => sum + p.versions.length, 0)}</div>
-            <div className="stat-label">版本</div>
-          </div>
+  // 是否为特殊筛选视图（收藏/最近使用/已分享）
+  const isSpecialFilter = ['收藏', '最近使用', '已分享'].includes(selectedCategory)
+
+  return (
+    <div className="content-area">
+      {/* Search Bar - inline in library */}
+      <div className="library-toolbar">
+        <div className="library-search-bar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            className="library-search-input"
+            type="text"
+            placeholder="搜索提示词..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className="library-search-clear" onClick={() => setSearchQuery('')}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
         </div>
 
+        {/* Sort Controls */}
+        <div className="library-sort-controls">
+          <button
+            className={`library-sort-btn ${sortBy === 'updatedAt' ? 'active' : ''}`}
+            onClick={() => setSortBy('updatedAt')}
+          >
+            最新
+          </button>
+          <button
+            className={`library-sort-btn ${sortBy === 'useCount' ? 'active' : ''}`}
+            onClick={() => setSortBy('useCount')}
+          >
+            最热
+          </button>
+          <button
+            className={`library-sort-btn ${sortBy === 'title' ? 'active' : ''}`}
+            onClick={() => setSortBy('title')}
+          >
+            名称
+          </button>
+        </div>
+      </div>
+
+      {/* Category Filter Buttons */}
+      {!isSpecialFilter && (
+        <div className="library-category-bar">
+          {DEFAULT_CATEGORIES.map(cat => {
+            const count = cat === '全部' ? prompts.length : prompts.filter(p => p.category === cat).length
+            const isActive = selectedCategory === cat
+            return (
+              <button
+                key={cat}
+                className={`library-category-chip ${isActive ? 'active' : ''}`}
+                onClick={() => setSelectedCategory(cat)}
+              >
+                <span className="category-chip-icon">{CATEGORY_ICONS[cat] || '📁'}</span>
+                <span>{cat}</span>
+                {count > 0 && <span className="category-chip-count">{count}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Results info */}
+      <div className="library-results-info">
+        <span className="library-results-count">
+          {isSpecialFilter ? selectedCategory : (selectedCategory === '全部' ? '全部分类' : selectedCategory)}
+          {' · '}
+          {filteredPrompts.length} 个提示词
+        </span>
+      </div>
+
+      {/* Content */}
+      {filteredPrompts.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -118,34 +184,9 @@ const Library: React.FC<LibraryProps> = ({ showToast }) => {
             </svg>
           </div>
           <div className="empty-state-title">没有找到匹配的提示词</div>
-          <div className="empty-state-desc">尝试调整搜索条件，或创建一个新的提示词</div>
+          <div className="empty-state-desc">尝试调整搜索条件或选择其他分类</div>
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="content-area">
-      <div className="stats-row">
-        <div className="stat-card">
-          <div className="stat-number">{prompts.length}</div>
-          <div className="stat-label">总数</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">{prompts.filter(p => p.isFavorite).length}</div>
-          <div className="stat-label">收藏</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">{new Set(prompts.map(p => p.category)).size}</div>
-          <div className="stat-label">分类</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">{prompts.reduce((sum, p) => sum + p.versions.length, 0)}</div>
-          <div className="stat-label">版本</div>
-        </div>
-      </div>
-
-      {viewMode === 'grid' ? (
+      ) : viewMode === 'grid' ? (
         <div className="prompt-grid">
           {filteredPrompts.map(prompt => (
             <div
@@ -155,7 +196,9 @@ const Library: React.FC<LibraryProps> = ({ showToast }) => {
               onContextMenu={e => handleContextMenu(e, prompt)}
             >
               <div className="prompt-card-header">
-                <span className="prompt-card-category">{prompt.category}</span>
+                <span className="prompt-card-category">
+                  {CATEGORY_ICONS[prompt.category] || '📁'} {prompt.category}
+                </span>
                 <button
                   className={`prompt-card-fav ${prompt.isFavorite ? 'active' : ''}`}
                   onClick={e => {
@@ -169,14 +212,17 @@ const Library: React.FC<LibraryProps> = ({ showToast }) => {
                 </button>
               </div>
               <div className="prompt-card-title">{prompt.title}</div>
-              <div className="prompt-card-desc">{prompt.description || '暂无描述'}</div>
+              <div className="prompt-card-desc">{prompt.description || prompt.content.slice(0, 80) + '...'}</div>
               <div className="prompt-card-footer">
                 <div className="prompt-card-tags">
                   {prompt.tags.slice(0, 3).map(tag => (
                     <span key={tag} className="prompt-tag">{tag}</span>
                   ))}
                 </div>
-                <span className="prompt-card-meta">{formatDate(prompt.updatedAt)}</span>
+                <span className="prompt-card-meta">
+                  {prompt.useCount > 0 && `${prompt.useCount}次使用 · `}
+                  {formatDate(prompt.updatedAt)}
+                </span>
               </div>
             </div>
           ))}
@@ -203,7 +249,7 @@ const Library: React.FC<LibraryProps> = ({ showToast }) => {
                 </svg>
               </button>
               <span className="prompt-list-item-title">{prompt.title}</span>
-              <span className="prompt-list-item-category">{prompt.category}</span>
+              <span className="prompt-list-item-category">{CATEGORY_ICONS[prompt.category] || '📁'} {prompt.category}</span>
               <span className="prompt-list-item-date">{formatDate(prompt.updatedAt)}</span>
             </div>
           ))}

@@ -47,7 +47,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
     if (activeView === 'workspace') return '工作台'
     if (activeView === 'library') return '提示词库'
     if (activeView === 'settings') return '设置'
-    if (activeView === 'explore') return '探索'
+    if (activeView === 'explore') return '探索发现'
     if (activeView === 'editor' && selectedPrompt) return selectedPrompt.title || '未命名提示词'
     return '提示词库'
   }

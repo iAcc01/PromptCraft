@@ -43,18 +43,48 @@ export interface Prompt {
 }
 
 export type ViewMode = 'grid' | 'list'
-export type SortBy = 'updatedAt' | 'createdAt' | 'title'
+export type SortBy = 'updatedAt' | 'createdAt' | 'title' | 'useCount'
 export type ActiveView = 'workspace' | 'library' | 'editor' | 'explore' | 'settings'
 export type RightPanelTab = 'debug' | 'versions' | 'share' | 'info'
 
+// 按照 Prompt Minder 信息架构重构的分类体系
 export const DEFAULT_CATEGORIES = [
   '全部',
-  '写作',
-  '编程',
-  '翻译',
-  '分析',
-  '创意',
-  '角色扮演',
-  '工具',
-  '自定义'
+  'IT/编程',
+  '写作辅助',
+  '教育培训',
+  '商业管理',
+  '创意艺术',
+  '生活服务',
+  '技术开发',
+  '语言翻译',
+  '哲学/宗教',
+  '医疗健康',
+  'SEO',
+  '娱乐游戏',
+  '专业咨询',
+  '技术培训',
+  '商业办公',
+  '社区贡献'
 ]
+
+// 分类对应的 Emoji 图标
+export const CATEGORY_ICONS: Record<string, string> = {
+  '全部': '📋',
+  'IT/编程': '💻',
+  '写作辅助': '✍️',
+  '教育培训': '🎓',
+  '商业管理': '📊',
+  '创意艺术': '🎨',
+  '生活服务': '🏠',
+  '技术开发': '⚙️',
+  '语言翻译': '🌐',
+  '哲学/宗教': '🧠',
+  '医疗健康': '🏥',
+  'SEO': '🔍',
+  '娱乐游戏': '🎮',
+  '专业咨询': '💼',
+  '技术培训': '🔧',
+  '商业办公': '🏢',
+  '社区贡献': '🤝'
+}
