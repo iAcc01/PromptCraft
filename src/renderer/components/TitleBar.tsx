@@ -14,15 +14,18 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
     darkMode,
     syncing,
     sidebarCollapsed,
+    searchQuery,
     toggleSidebar,
     setActiveView,
     setViewMode,
     toggleDarkMode,
     getSelectedPrompt,
-    addPrompt
+    addPrompt,
+    selectPrompt,
+    setSearchQuery
   } = useAppStore()
 
-  const { user, profile, signOut } = useAuthStore()
+  const { user, profile, signOut, skippedAuth } = useAuthStore()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
@@ -41,15 +44,23 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
   }, [showUserMenu])
 
   const getTitleText = () => {
+    if (activeView === 'workspace') return '工作台'
     if (activeView === 'library') return '提示词库'
-    if (!selectedPrompt) return '提示词库'
-    return selectedPrompt.title || '未命名提示词'
+    if (activeView === 'settings') return '设置'
+    if (activeView === 'explore') return '探索'
+    if (activeView === 'editor' && selectedPrompt) return selectedPrompt.title || '未命名提示词'
+    return '提示词库'
   }
 
   const handleSignOut = async () => {
     setShowUserMenu(false)
     await signOut()
     showToast('已退出登录', 'info')
+  }
+
+  const handleBack = () => {
+    selectPrompt(null)
+    setActiveView('workspace')
   }
 
   const getInitial = () => {
@@ -61,18 +72,27 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
   const getDisplayName = () => {
     if (profile?.display_name) return profile.display_name
     if (user?.email) return user.email.split('@')[0]
-    return 'User'
+    return '本地用户'
   }
 
   return (
     <div className="titlebar">
-        <div className="titlebar-left" style={sidebarCollapsed ? { paddingLeft: 56 } : undefined}>
+      <div className="titlebar-left" style={sidebarCollapsed ? { paddingLeft: 56 } : undefined}>
         <button className="titlebar-toggle" onClick={toggleSidebar} title="切换侧边栏">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
             <line x1="9" y1="3" x2="9" y2="21" />
           </svg>
         </button>
+
+        {activeView === 'editor' && selectedPromptId && (
+          <button className="titlebar-btn" onClick={handleBack} title="返回" style={{ marginRight: 4 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+        )}
+
         <span className="titlebar-title">{getTitleText()}</span>
         {syncing && (
           <span className="sync-indicator" title="正在同步...">
@@ -86,42 +106,20 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
       </div>
 
       <div className="titlebar-right">
-        {selectedPromptId && (
-          <>
-            <button
-              className={`titlebar-btn ${activeView === 'editor' ? 'active' : ''}`}
-              onClick={() => setActiveView('editor')}
-              title="编辑"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-            </button>
-            <button
-              className={`titlebar-btn ${activeView === 'debug' ? 'active' : ''}`}
-              onClick={() => setActiveView('debug')}
-              title="调试"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="4 17 10 11 4 5" />
-                <line x1="12" y1="19" x2="20" y2="19" />
-              </svg>
-            </button>
-            <button
-              className={`titlebar-btn ${activeView === 'share' ? 'active' : ''}`}
-              onClick={() => setActiveView('share')}
-              title="分享"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-              </svg>
-            </button>
-          </>
+        {/* Search in library/workspace */}
+        {(activeView === 'library' || activeView === 'workspace') && (
+          <div className="titlebar-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              className="titlebar-search-input"
+              type="text"
+              placeholder="搜索..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
         )}
 
         {activeView === 'library' && (
@@ -132,10 +130,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
                 onClick={() => setViewMode('grid')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="7" height="7" />
-                  <rect x="14" y="3" width="7" height="7" />
-                  <rect x="14" y="14" width="7" height="7" />
-                  <rect x="3" y="14" width="7" height="7" />
+                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
                 </svg>
               </button>
               <button
@@ -143,43 +138,22 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
                 onClick={() => setViewMode('list')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="8" y1="6" x2="21" y2="6" />
-                  <line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" />
-                  <line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" />
-                  <line x1="3" y1="18" x2="3.01" y2="18" />
+                  <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
                 </svg>
               </button>
             </div>
             <button className="titlebar-btn" onClick={() => addPrompt()} title="新建">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
           </>
         )}
 
-        <button className="titlebar-btn" onClick={() => { setActiveView('library'); useAppStore.getState().selectPrompt(null); }} title="提示词库">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
-        </button>
-
         <button className="titlebar-btn" onClick={toggleDarkMode} title="切换主题">
           {darkMode ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="5" />
-              <line x1="12" y1="1" x2="12" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="23" />
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-              <line x1="1" y1="12" x2="3" y2="12" />
-              <line x1="21" y1="12" x2="23" y2="12" />
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+              <circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
             </svg>
           ) : (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -203,18 +177,24 @@ const TitleBar: React.FC<TitleBarProps> = ({ showToast }) => {
                 <span className="user-avatar-lg">{getInitial()}</span>
                 <div className="user-dropdown-info">
                   <div className="user-dropdown-name">{getDisplayName()}</div>
-                  <div className="user-dropdown-email">{user?.email}</div>
+                  <div className="user-dropdown-email">{user?.email || '本地模式'}</div>
                 </div>
               </div>
               <div className="user-dropdown-divider" />
-              <button className="user-dropdown-item" onClick={handleSignOut}>
+              <button className="user-dropdown-item" onClick={() => { setShowUserMenu(false); setActiveView('settings') }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
+                  <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                 </svg>
-                退出登录
+                设置
               </button>
+              {user && !skippedAuth && (
+                <button className="user-dropdown-item" onClick={handleSignOut}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  退出登录
+                </button>
+              )}
             </div>
           )}
         </div>

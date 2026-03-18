@@ -5,15 +5,15 @@ import Sidebar from './components/Sidebar'
 import TitleBar from './components/TitleBar'
 import Library from './pages/Library'
 import Editor from './pages/Editor'
-import Debug from './pages/Debug'
-import Share from './pages/Share'
+import Workspace from './pages/Workspace'
+import Settings from './pages/Settings'
 import Auth from './pages/Auth'
 import Toast from './components/Toast'
 import UpdateNotification from './components/UpdateNotification'
 
 const App: React.FC = () => {
   const { darkMode, activeView, selectedPromptId, loadPrompts } = useAppStore()
-  const { user, loading: authLoading, initialize } = useAuthStore()
+  const { user, loading: authLoading, initialize, skippedAuth } = useAuthStore()
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' }[]>([])
   const [appReady, setAppReady] = useState(false)
 
@@ -22,12 +22,12 @@ const App: React.FC = () => {
     initialize().then(() => setAppReady(true))
   }, [])
 
-  // Load prompts when user changes (login/logout)
+  // Load prompts when user changes (login/logout) or local mode
   useEffect(() => {
     if (appReady) {
       loadPrompts()
     }
-  }, [appReady, user])
+  }, [appReady, user, skippedAuth])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
@@ -54,8 +54,8 @@ const App: React.FC = () => {
     )
   }
 
-  // Show auth page if not logged in
-  if (!user) {
+  // Show auth page if not logged in and not skipped
+  if (!user && !skippedAuth) {
     return (
       <>
         <Auth />
@@ -65,17 +65,29 @@ const App: React.FC = () => {
   }
 
   const renderView = () => {
-    if (!selectedPromptId && activeView !== 'library') {
-      return <Library showToast={showToast} />
-    }
-
     switch (activeView) {
+      case 'workspace':
+        return <Workspace showToast={showToast} />
       case 'editor':
+        if (!selectedPromptId) return <Workspace showToast={showToast} />
         return <Editor showToast={showToast} />
-      case 'debug':
-        return <Debug showToast={showToast} />
-      case 'share':
-        return <Share showToast={showToast} />
+      case 'settings':
+        return <Settings showToast={showToast} />
+      case 'explore':
+        return (
+          <div className="content-area">
+            <div className="empty-state" style={{ marginTop: 80 }}>
+              <div className="empty-state-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </div>
+              <div className="empty-state-title">探索 · 即将上线</div>
+              <div className="empty-state-desc">社区模板市场正在开发中，敬请期待</div>
+            </div>
+          </div>
+        )
+      case 'library':
       default:
         return <Library showToast={showToast} />
     }

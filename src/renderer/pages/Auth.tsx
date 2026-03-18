@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useAuthStore } from '../stores/useAuthStore'
+import { useAppStore } from '../stores/useAppStore'
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true)
@@ -9,7 +10,8 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
-  const { signIn, signUp, authError, clearError } = useAuthStore()
+  const { signIn, signUp, authError, clearError, skipAuth } = useAuthStore()
+  const { setLocalMode } = useAppStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,6 +40,11 @@ const Auth: React.FC = () => {
     clearError()
     setSuccessMessage('')
     setPassword('')
+  }
+
+  const handleSkipAuth = () => {
+    setLocalMode(true)
+    skipAuth()
   }
 
   return (
@@ -138,8 +145,17 @@ const Auth: React.FC = () => {
           <span>或</span>
         </div>
 
+        <button className="auth-skip-btn" onClick={handleSkipAuth} type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          本地模式开始
+        </button>
+
         <p className="auth-offline-hint">
-          您也可以在未登录时使用本地模式，数据仅保存在本设备。
+          数据仅保存在本设备，随时可登录启用云同步。
         </p>
       </div>
     </div>

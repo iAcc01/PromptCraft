@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import { Prompt, PromptVersion, DebugRecord, ViewMode, SortBy } from '../types'
+import { Prompt, PromptVersion, DebugRecord, ViewMode, SortBy, ActiveView, RightPanelTab } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from './useAuthStore'
 
@@ -71,7 +71,8 @@ function rowToPrompt(row: any): Prompt {
 interface AppState {
   prompts: Prompt[]
   selectedPromptId: string | null
-  activeView: 'library' | 'editor' | 'debug' | 'share'
+  activeView: ActiveView
+  rightPanelTab: RightPanelTab
   searchQuery: string
   selectedCategory: string
   viewMode: ViewMode
@@ -79,6 +80,7 @@ interface AppState {
   sidebarCollapsed: boolean
   darkMode: boolean
   syncing: boolean
+  localMode: boolean
 
   // Actions
   loadPrompts: () => Promise<void>
@@ -89,17 +91,22 @@ interface AppState {
   duplicatePrompt: (id: string) => void
   toggleFavorite: (id: string) => void
   selectPrompt: (id: string | null) => void
-  setActiveView: (view: 'library' | 'editor' | 'debug' | 'share') => void
+  setActiveView: (view: ActiveView) => void
+  setRightPanelTab: (tab: RightPanelTab) => void
   setSearchQuery: (query: string) => void
   setSelectedCategory: (category: string) => void
   setViewMode: (mode: ViewMode) => void
   setSortBy: (sort: SortBy) => void
   toggleSidebar: () => void
   toggleDarkMode: () => void
+  setLocalMode: (mode: boolean) => void
   addVersion: (promptId: string, note: string) => void
   restoreVersion: (promptId: string, versionId: string) => void
   addDebugRecord: (promptId: string, record: Omit<DebugRecord, 'id' | 'timestamp'>) => void
+  trackUsage: (promptId: string) => void
   getFilteredPrompts: () => Prompt[]
+  getRecentPrompts: (limit?: number) => Prompt[]
+  getSharedPrompts: () => Prompt[]
   getSelectedPrompt: () => Prompt | undefined
   syncPromptToSupabase: (prompt: Prompt) => Promise<void>
   deletePromptFromSupabase: (id: string) => Promise<void>
@@ -112,7 +119,8 @@ function getUser() {
 export const useAppStore = create<AppState>((set, get) => ({
   prompts: [],
   selectedPromptId: null,
-  activeView: 'library',
+  activeView: 'workspace',
+  rightPanelTab: 'debug',
   searchQuery: '',
   selectedCategory: '全部',
   viewMode: 'grid',
@@ -120,6 +128,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarCollapsed: false,
   darkMode: false,
   syncing: false,
+  localMode: false,
 
   loadPrompts: async () => {
     const user = getUser()
@@ -250,6 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       collaborators: [],
       createdAt: now,
       updatedAt: now,
+      useCount: 0,
       ...partial
     }
     set(state => {
@@ -285,7 +295,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         get().savePrompts()
         get().deletePromptFromSupabase(id)
       }, 0)
-      return { prompts, selectedPromptId, activeView: selectedPromptId ? state.activeView : 'library' }
+      return { prompts, selectedPromptId, activeView: selectedPromptId ? state.activeView : 'workspace' }
     })
   },
 
@@ -320,12 +330,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectPrompt: (id) => set({ selectedPromptId: id }),
   setActiveView: (view) => set({ activeView: view }),
+  setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setSelectedCategory: (category) => set({ selectedCategory: category }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setSortBy: (sort) => set({ sortBy: sort }),
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleDarkMode: () => set(s => ({ darkMode: !s.darkMode })),
+  setLocalMode: (mode) => set({ localMode: mode }),
+
+  trackUsage: (promptId) => {
+    set(state => {
+      const prompts = state.prompts.map(p =>
+        p.id === promptId ? { ...p, lastUsedAt: new Date().toISOString(), useCount: (p.useCount || 0) + 1 } : p
+      )
+      const updatedPrompt = prompts.find(p => p.id === promptId)
+      setTimeout(() => {
+        get().savePrompts()
+        if (updatedPrompt) get().syncPromptToSupabase(updatedPrompt)
+      }, 0)
+      return { prompts }
+    })
+  },
 
   addVersion: (promptId, note) => {
     const prompt = get().prompts.find(p => p.id === promptId)
@@ -376,6 +402,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (selectedCategory === '收藏') {
       filtered = filtered.filter(p => p.isFavorite)
+    } else if (selectedCategory === '最近使用') {
+      filtered = filtered.filter(p => p.lastUsedAt)
+      filtered.sort((a, b) => new Date(b.lastUsedAt!).getTime() - new Date(a.lastUsedAt!).getTime())
+    } else if (selectedCategory === '已分享') {
+      filtered = filtered.filter(p => p.isShared)
     } else if (selectedCategory !== '全部') {
       filtered = filtered.filter(p => p.category === selectedCategory)
     }
@@ -390,10 +421,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       )
     }
 
-    filtered.sort((a, b) => {
-      if (sortBy === 'title') return a.title.localeCompare(b.title)
-      return new Date(b[sortBy]).getTime() - new Date(a[sortBy]).getTime()
-    })
+    if (selectedCategory !== '最近使用') {
+      filtered.sort((a, b) => {
+        if (sortBy === 'title') return a.title.localeCompare(b.title)
+        return new Date(b[sortBy]).getTime() - new Date(a[sortBy]).getTime()
+      })
+    }
 
     return filtered
   },
@@ -401,6 +434,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   getSelectedPrompt: () => {
     const { prompts, selectedPromptId } = get()
     return prompts.find(p => p.id === selectedPromptId)
+  },
+
+  getRecentPrompts: (limit = 8) => {
+    const { prompts } = get()
+    return [...prompts]
+      .filter(p => p.lastUsedAt)
+      .sort((a, b) => new Date(b.lastUsedAt!).getTime() - new Date(a.lastUsedAt!).getTime())
+      .slice(0, limit)
+  },
+
+  getSharedPrompts: () => {
+    const { prompts } = get()
+    return prompts.filter(p => p.isShared)
   }
 }))
 
@@ -427,7 +473,8 @@ function getSamplePrompts(): Prompt[] {
       author: 'Me',
       collaborators: [],
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      useCount: 0
     },
     {
       id: uuidv4(),
@@ -448,7 +495,8 @@ function getSamplePrompts(): Prompt[] {
       author: 'Me',
       collaborators: [],
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      useCount: 0
     },
     {
       id: uuidv4(),
@@ -470,7 +518,8 @@ function getSamplePrompts(): Prompt[] {
       author: 'Me',
       collaborators: [],
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      useCount: 0
     },
     {
       id: uuidv4(),
@@ -491,7 +540,8 @@ function getSamplePrompts(): Prompt[] {
       author: 'Me',
       collaborators: [],
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      useCount: 0
     },
     {
       id: uuidv4(),
@@ -515,7 +565,8 @@ function getSamplePrompts(): Prompt[] {
       author: 'Me',
       collaborators: [],
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      useCount: 0
     }
   ]
 }

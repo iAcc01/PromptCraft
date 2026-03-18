@@ -54,11 +54,13 @@ const Library: React.FC<LibraryProps> = ({ showToast }) => {
         break
       case 'debug':
         selectPrompt(prompt.id)
-        setActiveView('debug')
+        setActiveView('editor')
+        useAppStore.getState().setRightPanelTab('debug')
         break
       case 'share':
         selectPrompt(prompt.id)
-        setActiveView('share')
+        setActiveView('editor')
+        useAppStore.getState().setRightPanelTab('share')
         break
       case 'duplicate':
         duplicatePrompt(prompt.id)

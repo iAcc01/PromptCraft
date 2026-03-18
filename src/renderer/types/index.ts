@@ -38,10 +38,14 @@ export interface Prompt {
   collaborators: string[]
   createdAt: string
   updatedAt: string
+  lastUsedAt?: string
+  useCount: number
 }
 
 export type ViewMode = 'grid' | 'list'
 export type SortBy = 'updatedAt' | 'createdAt' | 'title'
+export type ActiveView = 'workspace' | 'library' | 'editor' | 'explore' | 'settings'
+export type RightPanelTab = 'debug' | 'versions' | 'share' | 'info'
 
 export const DEFAULT_CATEGORIES = [
   '全部',

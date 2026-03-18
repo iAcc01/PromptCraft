@@ -23,6 +23,8 @@ interface AuthState {
   fetchProfile: () => Promise<void>
   updateProfile: (updates: Partial<Pick<Profile, 'display_name' | 'avatar_url'>>) => Promise<void>
   clearError: () => void
+  skipAuth: () => void
+  skippedAuth: boolean
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -31,6 +33,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile: null,
   loading: true,
   authError: null,
+  skippedAuth: false,
 
   initialize: async () => {
     try {
@@ -154,7 +157,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  clearError: () => set({ authError: null })
+  clearError: () => set({ authError: null }),
+
+  skipAuth: () => set({ skippedAuth: true, loading: false })
 }))
 
 function translateAuthError(message: string): string {
