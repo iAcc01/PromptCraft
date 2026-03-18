@@ -149,7 +149,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           console.error('Error loading prompts from Supabase:', error)
           // Fall back to local
           let prompts = ipcRenderer ? await ipcRenderer.invoke('load-prompts') : loadFromStorage()
-          if (prompts.length === 0) prompts = getSamplePrompts()
+          if (prompts.length === 0) {
+            prompts = getSamplePrompts()
+          } else {
+            const { merged, newCount } = mergeDefaultPrompts(prompts)
+            if (newCount > 0) prompts = merged
+          }
           set({ prompts, syncing: false })
           return
         }
@@ -176,6 +181,19 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         }
 
+        // Merge any new default prompts that don't exist yet
+        const { merged, newCount } = mergeDefaultPrompts(prompts)
+        if (newCount > 0) {
+          prompts = merged
+          // Save new prompts to cloud
+          const newOnes = merged.slice(merged.length - newCount)
+          for (const p of newOnes) {
+            const row = promptToRow(p, user.id)
+            await supabase.from('prompts').upsert(row)
+          }
+          console.log(`Merged ${newCount} new default prompts`)
+        }
+
         set({ prompts, syncing: false })
       } catch (err) {
         console.error('Error loading prompts:', err)
@@ -193,6 +211,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (prompts.length === 0) {
       prompts = getSamplePrompts()
+    } else {
+      // Merge any new default prompts for existing users
+      const { merged, newCount } = mergeDefaultPrompts(prompts)
+      if (newCount > 0) {
+        prompts = merged
+        console.log(`Merged ${newCount} new default prompts`)
+      }
     }
     set({ prompts })
   },
@@ -455,7 +480,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 function getSamplePrompts(): Prompt[] {
   const now = new Date().toISOString()
-  const user = getUser()
   return DEFAULT_PROMPTS.map(p => ({
     id: uuidv4(),
     title: p.title,
@@ -475,4 +499,41 @@ function getSamplePrompts(): Prompt[] {
     updatedAt: now,
     useCount: 0
   }))
+}
+
+// Merge default prompts into existing prompts (by title dedup)
+// This ensures existing users also get new default prompts on update
+function mergeDefaultPrompts(existing: Prompt[]): { merged: Prompt[]; newCount: number } {
+  const existingTitles = new Set(existing.map(p => p.title))
+  const now = new Date().toISOString()
+  const newPrompts: Prompt[] = []
+
+  for (const p of DEFAULT_PROMPTS) {
+    if (!existingTitles.has(p.title)) {
+      newPrompts.push({
+        id: uuidv4(),
+        title: p.title,
+        description: p.description,
+        content: p.content,
+        category: p.category,
+        tags: p.tags,
+        variables: p.variables,
+        versions: [],
+        debugRecords: [],
+        isFavorite: false,
+        isShared: false,
+        shareCode: '',
+        author: 'PromptMinder',
+        collaborators: [],
+        createdAt: now,
+        updatedAt: now,
+        useCount: 0
+      })
+    }
+  }
+
+  return {
+    merged: [...existing, ...newPrompts],
+    newCount: newPrompts.length
+  }
 }
